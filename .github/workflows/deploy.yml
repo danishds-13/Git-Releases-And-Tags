@@ -1,0 +1,41 @@
+name: Deploy on GitHub Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract release tag
+        run: echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to AWS EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+            set -e
+            cd /opt
+
+            if [ ! -d release-based-deployment ]; then
+              git clone https://github.com/${{ github.repository }}.git
+            fi
+
+            cd release-based-deployment
+            git fetch --tags
+            git checkout $RELEASE_TAG
+            sudo ./scripts/deploy.sh
+          EOF
